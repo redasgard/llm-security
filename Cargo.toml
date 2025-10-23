@@ -7,7 +7,7 @@ license = "MIT"
 description = "Comprehensive LLM security layer to prevent prompt injection and manipulation attacks"
 repository = "https://github.com/redasgard/llm-security"
 keywords = ["security", "llm", "ai", "prompt-injection", "gpt"]
-categories = ["security", "ai", "authentication"]
+categories = ["security", "authentication", "text-processing", "cryptography"]
 readme = "README.md"
 
 [dependencies]
