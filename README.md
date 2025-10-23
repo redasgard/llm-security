@@ -1,8 +1,9 @@
-# Valkra LLM Security
+# Red Asgard LLM Security
 
 [![Crates.io](https://img.shields.io/crates/v/llm-security.svg)](https://crates.io/crates/llm-security)
 [![Documentation](https://docs.rs/llm-security/badge.svg)](https://docs.rs/llm-security)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![Test Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](https://github.com/redasgard/llm-security)
 
 **The most comprehensive LLM security library for Rust.**
 
@@ -292,7 +293,7 @@ Contributions welcome! Areas of interest:
 
 ## Origin
 
-Extracted from [Valkra](https://github.com/asgardtech/valkra), a blockchain security auditing platform where it protects AI-powered code analysis from manipulation attacks in production.
+Extracted from [Red Asgard](https://github.com/redasgard), a security platform where it protects AI-powered code analysis from manipulation attacks in production.
 
 ## License
 

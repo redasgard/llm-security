@@ -3,7 +3,7 @@
 use llm_security::{LLMSecurityConfig, LLMSecurityLayer};
 
 fn main() {
-    println!("=== Valkra LLM Security Examples ===\n");
+    println!("=== Red Asgard LLM Security Examples ===\n");
 
     // Example 1: Basic Detection
     println!("1. Basic Prompt Injection Detection");
