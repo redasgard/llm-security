@@ -25,10 +25,14 @@ A clear and concise description of what actually happened.
 ## Code Example
 ```rust
 // Minimal code example that reproduces the issue
-use llm-security::*;
+use llm_security::{LLMSecurityLayer, LLMSecurityConfig};
 
-fn main() -> anyhow::Result<()> {
-    // Your code here
+fn main() -> Result<(), String> {
+    let security = LLMSecurityLayer::new(LLMSecurityConfig::default());
+    
+    // This should detect/block but doesn't (or vice versa)
+    let result = security.detect_prompt_injection("your input here");
+    println!("Result: {:?}", result);
     Ok(())
 }
 ```
@@ -37,12 +41,15 @@ fn main() -> anyhow::Result<()> {
 - **OS**: [e.g. Ubuntu 22.04, Windows 11, macOS 13.0]
 - **Rust Version**: [e.g. 1.70.0]
 - **llm-security Version**: [e.g. 0.1.0]
+- **LLM Model**: [e.g. GPT-4, Claude, Llama]
 - **Architecture**: [e.g. x86_64, aarch64]
 
 ## Security Considerations
 - [ ] This bug could be a security vulnerability
-- [ ] This bug involves security validation
-- [ ] This bug involves performance implications
+- [ ] This bug involves prompt injection attacks
+- [ ] This bug involves jailbreak attempts
+- [ ] This bug involves Unicode attacks
+- [ ] This bug involves false positives/negatives
 
 ## Additional Context
 Add any other context about the problem here.

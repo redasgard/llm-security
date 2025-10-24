@@ -23,24 +23,29 @@ A clear and concise description of any alternative solutions or features you've 
 
 ## Use Case
 Describe the specific use case for this feature:
-- **Application Type**: [e.g. Web application, CLI tool, API service]
-- **Security Context**: [e.g. Security validation, threat detection, etc.]
+- **Application Type**: [e.g. Chatbot, Code analysis tool, API service]
+- **LLM Model**: [e.g. GPT-4, Claude, Llama, Custom model]
+- **Security Context**: [e.g. Prompt injection prevention, jailbreak detection, output validation]
 
 ## Code Example
 ```rust
 // Example of how you'd like to use the new feature
-use llm-security::*;
+use llm_security::{LLMSecurityLayer, LLMSecurityConfig, new_feature};
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<(), String> {
+    let security = LLMSecurityLayer::new(LLMSecurityConfig::default());
+    
     // Your proposed usage
+    let result = new_feature("example")?;
     Ok(())
 }
 ```
 
 ## Security Considerations
-- [ ] This feature affects security validation
+- [ ] This feature affects security detection
 - [ ] This feature involves new attack patterns
 - [ ] This feature involves performance implications
+- [ ] This feature involves false positive/negative rates
 
 ## Additional Context
 Add any other context or screenshots about the feature request here.
