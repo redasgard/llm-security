@@ -110,10 +110,7 @@ impl ValidationEngine {
             issues,
             warnings,
             output_size: output.len(),
-            validation_timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
+            validation_timestamp: chrono::Utc::now().timestamp() as u64,
         }
     }
 
@@ -253,3 +250,4 @@ impl ValidationResult {
         self.issues.iter().filter(|i| matches!(i.severity, ValidationSeverity::High | ValidationSeverity::Critical)).collect()
     }
 }
+

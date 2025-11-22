@@ -8,10 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Nothing yet
+- WASM compatibility support using `chrono` with `wasmbind` feature
+- `validation_test.rs` in new `tests/` directory
 
 ### Changed
-- Nothing yet
+- Replaced `std::time` usage with `chrono` for WASM compatibility
 
 ### Deprecated
 - Nothing yet
