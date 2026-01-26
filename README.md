@@ -301,7 +301,7 @@ Licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ## Security
 
-To report security vulnerabilities, please email security@asgardtech.com.
+To report security vulnerabilities, please email security@redasgard.com.
 
 **Do not** open public GitHub issues for security vulnerabilities.
 
