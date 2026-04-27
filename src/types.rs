@@ -201,29 +201,80 @@ impl InjectionDetectionResult {
     }
 }
 
-/// Main LLM Security struct
-pub struct LLMSecurity {
+/// Main LLM security facade.
+///
+/// Wraps the detection, sanitization, and validation engines behind a single
+/// surface that matches the documented public API in `README.md` and
+/// `docs/architecture.md`.
+pub struct LLMSecurityLayer {
     config: LLMSecurityConfig,
 }
 
-impl LLMSecurity {
-    /// Create a new LLM Security instance
+/// Backwards-compatible alias for the previous name of [`LLMSecurityLayer`].
+pub type LLMSecurity = LLMSecurityLayer;
+
+impl LLMSecurityLayer {
     pub fn new(config: LLMSecurityConfig) -> Self {
         Self { config }
     }
 
-    /// Create a new instance with default configuration
-    pub fn default() -> Self {
-        Self::new(LLMSecurityConfig::default())
-    }
-
-    /// Get the current configuration
     pub fn config(&self) -> &LLMSecurityConfig {
         &self.config
     }
 
-    /// Update the configuration
     pub fn update_config(&mut self, config: LLMSecurityConfig) {
         self.config = config;
+    }
+
+    /// Analyze input for prompt-injection patterns without modifying it.
+    pub fn detect_prompt_injection(&self, code: &str) -> InjectionDetectionResult {
+        crate::detection::DetectionEngine::new(self.config.clone())
+            .detect_prompt_injection_safe(code)
+    }
+
+    /// Sanitize and wrap code for safe LLM processing.
+    pub fn sanitize_code_for_llm(&self, code: &str) -> Result<String, String> {
+        crate::sanitization::SanitizationEngine::new(self.config.clone())
+            .sanitize_comprehensive(code)
+    }
+
+    /// Wrap a base prompt with hardened anti-injection instructions.
+    pub fn generate_secure_system_prompt(&self, base_prompt: &str) -> String {
+        crate::sanitization::SanitizationEngine::new(self.config.clone())
+            .generate_secure_system_prompt(base_prompt)
+    }
+
+    /// Validate an LLM response for signs of compromise.
+    pub fn validate_llm_output(&self, output: &str) -> Result<(), String> {
+        crate::validation::ValidationEngine::new(self.config.clone())
+            .validate_llm_output(output)
+    }
+
+    /// Comprehensive pre-flight check: detect injection, then sanitize+wrap.
+    ///
+    /// In strict mode a malicious result is rejected outright; otherwise the
+    /// caller still receives a sanitized payload they can choose to send.
+    pub fn pre_llm_security_check(&self, code: &str) -> Result<String, String> {
+        if self.config.enable_injection_detection {
+            let result = self.detect_prompt_injection(code);
+            if result.is_malicious && self.config.strict_mode {
+                return Err(format!(
+                    "Input rejected by pre-flight security check: {}",
+                    result.summary()
+                ));
+            }
+        }
+        self.sanitize_code_for_llm(code)
+    }
+
+    /// Post-flight check: validate the LLM's output.
+    pub fn post_llm_security_check(&self, output: &str) -> Result<(), String> {
+        self.validate_llm_output(output)
+    }
+}
+
+impl Default for LLMSecurityLayer {
+    fn default() -> Self {
+        Self::new(LLMSecurityConfig::default())
     }
 }

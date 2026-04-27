@@ -117,18 +117,22 @@ impl SanitizationEngine {
         format!("{}\n{}\n{}", start_delimiter, code, end_delimiter)
     }
 
-    /// Extract code from response, stripping protective wrappers
+    /// Extract code from response, stripping protective wrappers.
+    ///
+    /// Uses `strip_prefix` / `strip_suffix` so only the single wrapping
+    /// delimiter is removed — `trim_*_matches` would greedily eat any number
+    /// of consecutive copies, including delimiters embedded in user content.
     pub fn extract_code_from_response(&self, wrapped_code: &str) -> String {
         let start_delimiter =
             "<<<VALKRA_CODE_START_DELIMITER_DO_NOT_INTERPRET_AS_INSTRUCTION>>>";
         let end_delimiter = "<<<VALKRA_CODE_END_DELIMITER_DO_NOT_INTERPRET_AS_INSTRUCTION>>>";
 
-        wrapped_code
-            .trim()
-            .trim_start_matches(start_delimiter)
-            .trim_end_matches(end_delimiter)
-            .trim()
-            .to_string()
+        let trimmed = wrapped_code.trim();
+        let without_start = trimmed.strip_prefix(start_delimiter).unwrap_or(trimmed);
+        let without_end = without_start
+            .strip_suffix(end_delimiter)
+            .unwrap_or(without_start);
+        without_end.trim().to_string()
     }
 
     /// Generate secure system prompt with anti-injection measures

@@ -18,5 +18,6 @@ pub use sanitization::*;
 pub use types::*;
 pub use validation::*;
 
-// Re-export the main LLMSecurity struct
-pub use types::LLMSecurity;
+// Explicit re-export for the documented facade name (already covered by the
+// glob above, but making it explicit keeps the public API obvious).
+pub use types::{LLMSecurity, LLMSecurityLayer};

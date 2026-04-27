@@ -6,13 +6,13 @@ use crate::types::InjectionDetectionResult;
 
 /// Advanced detection methods for LLM security
 pub struct DetectionEngine {
-    config: crate::types::LLMSecurityConfig,
+    _config: crate::types::LLMSecurityConfig,
 }
 
 impl DetectionEngine {
     /// Create a new detection engine
     pub fn new(config: crate::types::LLMSecurityConfig) -> Self {
-        Self { config }
+        Self { _config: config }
     }
 
     /// Detect prompt injection attempts in user input
@@ -56,16 +56,19 @@ impl DetectionEngine {
             risk_score += MARKDOWN_MANIPULATION_RISK_SCORE;
         }
 
-        // Check for excessive special characters (obfuscation)
-        let special_char_ratio = code
-            .chars()
-            .filter(|c| !c.is_alphanumeric() && !c.is_whitespace())
-            .count() as f32
-            / code.len() as f32;
+        // Check for excessive special characters (obfuscation). Guard against
+        // empty input to avoid a 0/0 NaN comparison.
+        if !code.is_empty() {
+            let special_char_ratio = code
+                .chars()
+                .filter(|c| !c.is_alphanumeric() && !c.is_whitespace())
+                .count() as f32
+                / code.chars().count() as f32;
 
-        if special_char_ratio > MAX_SPECIAL_CHAR_RATIO {
-            detected_patterns.push("High special character ratio".to_string());
-            risk_score += SPECIAL_CHAR_RISK_SCORE;
+            if special_char_ratio > MAX_SPECIAL_CHAR_RATIO {
+                detected_patterns.push("High special character ratio".to_string());
+                risk_score += SPECIAL_CHAR_RISK_SCORE;
+            }
         }
 
         // Check for hidden unicode
@@ -221,24 +224,23 @@ impl DetectionEngine {
         self.detect_prompt_injection(&normalized_code)
     }
 
-    /// Detect regex DoS patterns that could cause catastrophic backtracking
+    /// Detect regex source that contains catastrophic-backtracking patterns.
+    ///
+    /// This only fires on literal evil-regex shapes like `(a+)+`, not on bare
+    /// substrings such as `**` (which would otherwise flag every Markdown bold
+    /// or C++ snippet as a DoS attack).
     fn detect_regex_dos_patterns(&self, code: &str) -> bool {
-        // Check for nested quantifiers that could cause issues
-        if code.contains("++") || code.contains("**") || code.contains("??") {
+        if code.contains("(a+)+") || code.contains("(a*)*") || code.contains("(a|a)*") {
             return true;
         }
 
-        // Check for very long repeated patterns (more specific)
+        // Very long inputs that are almost entirely a single repeated token are
+        // cheap fodder for any quantifier. Keep this as a last-resort guard.
         if code.len() > 1000 {
             let repeated_chars = code.chars().filter(|&c| c == 'a' || c == 'b').count();
             if repeated_chars > code.len() / 2 {
                 return true;
             }
-        }
-
-        // Check for specific dangerous regex patterns in the code itself
-        if code.contains("(a+)+") || code.contains("(a*)*") || code.contains("(a|a)*") {
-            return true;
         }
 
         false
@@ -261,45 +263,45 @@ impl DetectionEngine {
         cleaned.replace("\r\n", "\n").replace('\r', "\n")
     }
 
-    /// Detect steganography (hidden messages) in code
+    /// Detect steganography (hidden messages) in code.
     fn detect_steganography(&self, code: &str) -> bool {
-        // Check for hidden Unicode characters
+        // Hidden Unicode characters are an unambiguous signal on their own.
         let hidden_chars = ['\u{200B}', '\u{200C}', '\u{200D}', '\u{FEFF}'];
         if hidden_chars.iter().any(|&c| code.contains(c)) {
             return true;
         }
 
-        // Check for alternating case patterns (could hide binary data)
-        let mut alternating_count = 0;
+        // Alternating case can hide binary data; require the suspicious run to
+        // be a substantial share of the *alphabetic* characters (not the whole
+        // input, which dilutes the signal).
         let chars: Vec<char> = code.chars().collect();
-        for i in 1..chars.len() {
-            if chars[i].is_ascii_alphabetic() && chars[i-1].is_ascii_alphabetic() {
-                if chars[i].is_uppercase() != chars[i-1].is_uppercase() {
+        let alpha_count = chars.iter().filter(|c| c.is_ascii_alphabetic()).count();
+        if alpha_count >= 20 {
+            let mut alternating_count = 0;
+            for i in 1..chars.len() {
+                if chars[i].is_ascii_alphabetic()
+                    && chars[i - 1].is_ascii_alphabetic()
+                    && chars[i].is_uppercase() != chars[i - 1].is_uppercase()
+                {
                     alternating_count += 1;
                 }
             }
-        }
-        
-        if alternating_count > code.len() / 10 {
-            return true;
-        }
-
-        // Check for unusual spacing patterns
-        let spaces = code.matches(' ').count();
-        let tabs = code.matches('\t').count();
-        if spaces > code.len() / 3 || tabs > code.len() / 3 {
-            return true;
+            if alternating_count * 2 > alpha_count {
+                return true;
+            }
         }
 
-        // Check for base64-like patterns in comments
-        if code.contains("//") {
-            let lines: Vec<&str> = code.lines().collect();
-            for line in lines {
-                if line.trim().starts_with("//") {
-                    let comment = line.trim_start_matches("//").trim();
-                    if comment.len() > 20 && comment.chars().all(|c| c.is_alphanumeric() || c == '+' || c == '/' || c == '=') {
-                        return true;
-                    }
+        // Long base64-looking comments are a steganography classic.
+        for line in code.lines() {
+            let trimmed = line.trim();
+            if let Some(comment) = trimmed.strip_prefix("//") {
+                let comment = comment.trim();
+                if comment.len() > 40
+                    && comment
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
+                {
+                    return true;
                 }
             }
         }
@@ -307,48 +309,50 @@ impl DetectionEngine {
         false
     }
 
-    /// Detect multiple layers of encoding
+    /// Detect multiple layers of encoding.
+    ///
+    /// Only triggers on explicit `name:` prefixes (e.g. `base64:...`) or on
+    /// multiple co-occurring encoding signals — not on bare `0x` or `%20`,
+    /// which appear in any normal source code or URL.
     fn detect_encoding_layers(&self, code: &str) -> bool {
-        // Check for base64 encoding
-        if code.contains("base64:") || code.contains("b64:") {
+        let explicit_prefixes = [
+            "base64:", "b64:", "hex:", "rot13:", "caesar:", "binary:", "bin:",
+        ];
+        if explicit_prefixes.iter().any(|p| code.contains(p)) {
             return true;
         }
 
-        // Check for hex encoding
-        if code.contains("hex:") || code.contains("0x") {
-            return true;
+        let mut signals = 0;
+
+        // URL-encoding is only suspicious if there are several encoded chars.
+        let url_encoded = ["%20", "%2F", "%2E", "%3C", "%3E"]
+            .iter()
+            .filter(|p| code.contains(*p))
+            .count();
+        if url_encoded >= 3 {
+            signals += 1;
         }
 
-        // Check for URL encoding
-        if code.contains("%20") || code.contains("%2F") || code.contains("%2E") {
-            return true;
+        // Same idea for HTML entities — one isolated `&lt;` is just HTML.
+        let html_entities = ["&#", "&lt;", "&gt;", "&amp;", "&quot;"]
+            .iter()
+            .filter(|p| code.contains(*p))
+            .count();
+        if html_entities >= 3 {
+            signals += 1;
         }
 
-        // Check for HTML entity encoding
-        if code.contains("&#") || code.contains("&lt;") || code.contains("&gt;") {
-            return true;
-        }
-
-        // Check for ROT13 encoding
-        if code.contains("rot13:") || code.contains("caesar:") {
-            return true;
-        }
-
-        // Check for binary patterns
-        if code.contains("binary:") || code.contains("bin:") {
-            return true;
-        }
-
-        // Check for multiple encoding indicators
+        let lower = code.to_lowercase();
         let encoding_indicators = ["decode", "encode", "encrypt", "decrypt", "cipher", "crypto"];
-        let mut count = 0;
-        for indicator in encoding_indicators.iter() {
-            if code.to_lowercase().contains(indicator) {
-                count += 1;
-            }
+        let indicator_hits = encoding_indicators
+            .iter()
+            .filter(|i| lower.contains(*i))
+            .count();
+        if indicator_hits >= 2 {
+            signals += 1;
         }
-        
-        count >= 2
+
+        signals >= 2
     }
 
     /// Detect context injection attacks (JSON/XML)
@@ -385,13 +389,14 @@ impl DetectionEngine {
             }
         }
 
-        // Check for SQL injection patterns
-        if code.contains("pr") && (code.contains("OR") || code.contains("AND")) {
-            return true;
-        }
-
-        // Check for command injection patterns
-        if code.contains("`") || code.contains("$(") || code.contains("${") {
+        // Check for SQL-injection-style tautologies. The previous check
+        // (`code.contains("pr") && ...`) was a placeholder that fired on any
+        // string containing the letters "pr" — it has been removed in favour
+        // of a real tautology pattern.
+        let lower = code.to_lowercase();
+        if (lower.contains("' or '") || lower.contains("\" or \""))
+            && (lower.contains("='") || lower.contains("=1") || lower.contains("--"))
+        {
             return true;
         }
 
