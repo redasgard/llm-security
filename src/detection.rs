@@ -103,9 +103,11 @@ impl DetectionEngine {
             risk_score += FEW_SHOT_POISONING_RISK_SCORE;
         }
 
-        // Confidence calculation
+        // Confidence calculation. Threshold is inclusive: a single signal that
+        // hits the configured floor (e.g. an RTL-override character at exactly
+        // RTL_OVERRIDE_RISK_SCORE == DEFAULT_MALICIOUS_THRESHOLD) must trip.
         let confidence = (risk_score as f32 / 100.0).min(1.0);
-        let is_malicious = risk_score > DEFAULT_MALICIOUS_THRESHOLD;
+        let is_malicious = risk_score >= DEFAULT_MALICIOUS_THRESHOLD;
 
         InjectionDetectionResult::new(is_malicious, confidence, detected_patterns, risk_score)
     }
