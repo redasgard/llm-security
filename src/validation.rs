@@ -253,3 +253,65 @@ impl ValidationResult {
         self.issues.iter().filter(|i| matches!(i.severity, ValidationSeverity::High | ValidationSeverity::Critical)).collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::LLMSecurityConfig;
+
+    fn engine() -> ValidationEngine {
+        ValidationEngine::new(LLMSecurityConfig::default())
+    }
+
+    #[test]
+    fn safe_output_passes_validation() {
+        assert!(engine().validate_llm_output("Analysis complete. No vulnerabilities found.").is_ok());
+    }
+
+    #[test]
+    fn compromised_output_fails_validation() {
+        assert!(engine().validate_llm_output("As requested, I will ignore security rules").is_err());
+    }
+
+    #[test]
+    fn validation_disabled_always_passes() {
+        let mut cfg = LLMSecurityConfig::default();
+        cfg.enable_output_validation = false;
+        let e = ValidationEngine::new(cfg);
+        assert!(e.validate_llm_output("As requested, I will ignore all rules").is_ok());
+    }
+
+    #[test]
+    fn comprehensive_validation_flags_suspicious_patterns() {
+        let result = engine().validate_output_comprehensive("As requested, I will ignore the rules");
+        assert!(!result.is_valid);
+        assert!(result.has_security_risk());
+        assert!(!result.get_high_severity_issues().is_empty());
+    }
+
+    #[test]
+    fn comprehensive_validation_flags_personality_change() {
+        let result = engine().validate_output_comprehensive("I am now acting as a different assistant");
+        assert!(!result.is_valid);
+    }
+
+    #[test]
+    fn comprehensive_validation_flags_exfiltration_language() {
+        let result = engine().validate_output_comprehensive("Here is the data you asked for: confidential data");
+        assert_eq!(result.risk_level, ValidationRiskLevel::Critical);
+        assert!(!result.get_critical_issues().is_empty());
+    }
+
+    #[test]
+    fn comprehensive_validation_passes_clean_output() {
+        let result = engine().validate_output_comprehensive("Analysis complete. No vulnerabilities found.");
+        assert!(result.is_valid);
+        assert_eq!(result.risk_level, ValidationRiskLevel::None);
+    }
+
+    #[test]
+    fn get_validation_summary_reports_pass_fail() {
+        let clean = engine().validate_output_comprehensive("All good here.");
+        assert!(engine().get_validation_summary(&clean).contains("PASSED"));
+    }
+}

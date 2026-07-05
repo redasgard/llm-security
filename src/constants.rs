@@ -68,3 +68,11 @@ pub const MAX_SPACING_RATIO: f32 = 0.33;
 
 /// Maximum UTF-16 null byte ratio for mixed encoding detection
 pub const MAX_UTF16_NULL_RATIO: f32 = 0.25;
+
+/// Additive risk-score contribution when `MultiTurnAnalyzer::analyze_crescendo`
+/// (see `context.rs`) flags a crescendo escalation pattern.
+pub const CRESCENDO_RISK_SCORE: u32 = 40;
+
+/// Additive risk-score contribution when `MultiTurnAnalyzer::analyze_many_shot`
+/// (see `context.rs`) flags a many-shot jailbreak pattern.
+pub const MANY_SHOT_RISK_SCORE: u32 = 40;

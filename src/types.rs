@@ -227,3 +227,123 @@ impl LLMSecurity {
         self.config = config;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_has_expected_values() {
+        let cfg = LLMSecurityConfig::default();
+        assert!(cfg.enable_injection_detection);
+        assert!(cfg.enable_output_validation);
+        assert_eq!(cfg.max_code_size_bytes, crate::constants::DEFAULT_MAX_CODE_SIZE_BYTES);
+        assert!(cfg.strict_mode);
+        assert!(cfg.log_attacks);
+        assert_eq!(cfg.max_llm_calls_per_hour, crate::constants::DEFAULT_MAX_LLM_CALLS_PER_HOUR);
+    }
+
+    #[test]
+    fn permissive_config_disables_detection() {
+        let cfg = LLMSecurityConfig::permissive();
+        assert!(!cfg.enable_injection_detection);
+        assert!(!cfg.enable_output_validation);
+        assert!(!cfg.strict_mode);
+        assert!(!cfg.log_attacks);
+    }
+
+    #[test]
+    fn strict_config_has_smaller_limits() {
+        let cfg = LLMSecurityConfig::strict();
+        assert!(cfg.strict_mode);
+        assert_eq!(cfg.max_code_size_bytes, 100_000);
+        assert_eq!(cfg.max_llm_calls_per_hour, 50);
+    }
+
+    #[test]
+    fn new_constructor_sets_fields() {
+        let cfg = LLMSecurityConfig::new(true, false, 1234, true);
+        assert!(cfg.enable_injection_detection);
+        assert!(!cfg.enable_output_validation);
+        assert_eq!(cfg.max_code_size_bytes, 1234);
+        assert!(cfg.strict_mode);
+    }
+
+    #[test]
+    fn validate_rejects_zero_size() {
+        let mut cfg = LLMSecurityConfig::default();
+        cfg.max_code_size_bytes = 0;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn validate_rejects_zero_rate_limit() {
+        let mut cfg = LLMSecurityConfig::default();
+        cfg.max_llm_calls_per_hour = 0;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn validate_accepts_default() {
+        assert!(LLMSecurityConfig::default().validate().is_ok());
+    }
+
+    #[test]
+    fn is_development_and_is_production_are_mutually_exclusive_for_defaults() {
+        assert!(LLMSecurityConfig::default().is_production());
+        assert!(LLMSecurityConfig::permissive().is_development());
+    }
+
+    #[test]
+    fn describe_contains_key_fields() {
+        let desc = LLMSecurityConfig::default().describe();
+        assert!(desc.contains("injection_detection=true"));
+        assert!(desc.contains("rate_limit="));
+    }
+
+    #[test]
+    fn safe_result_is_not_malicious() {
+        let r = InjectionDetectionResult::safe();
+        assert!(!r.is_malicious);
+        assert_eq!(r.risk_score, 0);
+        assert_eq!(r.risk_level(), "NONE");
+    }
+
+    #[test]
+    fn malicious_result_reports_risk_level() {
+        let r = InjectionDetectionResult::malicious(0.9, vec!["x".to_string()], 60);
+        assert!(r.is_malicious);
+        assert!(r.is_high_risk());
+        assert!(!r.is_critical_risk());
+        assert_eq!(r.risk_level(), "HIGH");
+    }
+
+    #[test]
+    fn critical_risk_threshold() {
+        let r = InjectionDetectionResult::malicious(1.0, vec![], crate::constants::REGEX_DOS_RISK_SCORE);
+        assert!(r.is_critical_risk());
+        assert_eq!(r.risk_level(), "CRITICAL");
+    }
+
+    #[test]
+    fn summary_reports_safe_and_malicious() {
+        assert_eq!(InjectionDetectionResult::safe().summary(), "SAFE: No malicious patterns detected");
+        let r = InjectionDetectionResult::malicious(0.5, vec!["a".to_string()], 40);
+        assert!(r.summary().starts_with("MALICIOUS"));
+    }
+
+    #[test]
+    fn llm_security_new_and_default_use_given_config() {
+        let sec = LLMSecurity::new(LLMSecurityConfig::strict());
+        assert!(sec.config().strict_mode);
+        let sec2 = LLMSecurity::default();
+        assert!(sec2.config().enable_injection_detection);
+    }
+
+    #[test]
+    fn llm_security_update_config_replaces_config() {
+        let mut sec = LLMSecurity::default();
+        sec.update_config(LLMSecurityConfig::permissive());
+        assert!(!sec.config().strict_mode);
+    }
+}
