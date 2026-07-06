@@ -1,10 +1,24 @@
 # LLM Security Gap Analysis & Threat Coverage Matrix
 
-**Date:** 2026-07-05 (updated post-implementation, commit `6fa5e72`)
+**Date:** 2026-07-05, updated 2026-07-06 after Phase 6 (commit `d8bff68`)
 **Scope:** The full spectrum of AI/LLM security threats as of mid-2026, mapped against what `llm-security` currently implements.
-**Status:** This supersedes the original pre-implementation analysis. Since that version, 19 new modules were built (`src/layer.rs`, `rate_limit.rs`, `decode.rs`, `failsafe.rs`, `events.rs`, `context.rs`, `semantic.rs`, `confusables.rs`, `adversarial_ml.rs`, `i18n.rs`, `indirect.rs`, `supply_chain.rs`, `agentic.rs`, `multimodal.rs`, `pii.rs`, `output_sink.rs`, `grounding.rs`, `policy.rs`, `content_safety.rs`) with 200+ new tests, all additive and backward-compatible.
+**Status:** This supersedes both the original pre-implementation analysis and the first post-implementation update (commit `6fa5e72`). Sections 1-4 below are the **as-of `6fa5e72`** snapshot (kept for historical trace); **section 0 is the current, re-verified state** — read that first.
 
-**Verdict at a glance:** Most of the 48 originally-identified gaps now have a real, tested module behind them. **But there is a load-bearing caveat verified directly against the source, not assumed from the plan:** of those 19 new modules, only **5** (`context`, `events`, `failsafe`, `rate_limit`, `semantic`) are actually wired into `LLMSecurityLayer` — the facade most callers will use. The other **12** exist as independently correct, independently tested modules that a caller must import and invoke *themselves*; they contribute nothing to the default `LLMSecurityLayer::detect_prompt_injection` / `sanitize_code_for_llm` / `pre_llm_security_check` call paths today. Section 3 marks this explicitly per item. Section 4 is a concrete Phase 6 to close that specific gap.
+## 0. Phase 6 update (2026-07-06) — the integration gap is now mostly closed
+
+Section 3's original finding — 12 of 19 new modules built but unreachable from `LLMSecurityLayer` — has been substantially fixed, verified directly against the source (grepping `crate::<module>` references in each facade file, not assumed from any plan):
+
+**Now wired into `LLMSecurityLayer`** (via new opt-in builders, each a no-op until called): `pii` (via `with_pii_scanner` → `post_llm_security_check_redacted`), the system-prompt-leak half of `output_sink` (via `with_system_prompt_leak_detector` → `post_llm_security_check`), `policy` (via `with_policy_store` → `detect_prompt_injection`), `decode` (via `with_decoder` → `detect_prompt_injection`), `confusables` (via `with_confusables_detector` → `detect_prompt_injection`).
+
+**Now wired into a new sibling facade, `AgenticSecurityLayer`** (`src/agentic_layer.rs`) — built because `LLMSecurityLayer`'s `&str -> Result<String>` shape doesn't fit tool-calls/agent-identity/messages: `agentic` (`ToolPolicyEngine`, `GoalHijackGuard`, `McpToolScanner`, `PrivilegeGuard`, `MemoryGuard`, `InterAgentGuard`, `CodeExecGuard`, `CircuitBreaker`/`RecursionGuard`, `ActionSandbox`), `supply_chain`, `indirect`.
+
+**Two previously-never-written gaps are now real and always-on** in `DetectionEngine::detect_prompt_injection`: extended hidden-Unicode (Tag block + variation selectors) and variable-spacing-tolerant token-stuffing patterns.
+
+**Event-emission completeness**: all 7 `SecurityEventType` variants now have a real construction site (previously 2 of 7); `PolicyStore` gained its own `with_event_sink` for `PolicyReloaded` since `hot_swap` can be called from a background thread with no facade in scope.
+
+**Still standalone / not wired into either facade** (out of scope for Phase 6 by explicit decision, not an oversight): `multimodal` (a separate modality entry point — no text facade fits image/audio content), `i18n` (a free function taking `&DetectionEngine` directly; would need its own builder to become a `LLMSecurityLayer` method), `adversarial_ml` (`detect_adversarial_suffix`, `QueryPatternProfile` — no facade calls them yet). `grounding` and `content_safety` remain, correctly, extension-point traits with no built-in logic to wire — there is nothing to connect until a caller supplies an implementation.
+
+**Updated executive summary** (supersedes section 2's table below): of the 54 items, roughly **26 are now wired-in by default** through one of the two facades (up from 13), **~10 remain built-but-standalone** (multimodal, i18n, adversarial_ml, plus `output_sink::escape_for_sink`'s general sink-escaping utility which — unlike its system-prompt-leak sibling — is not yet called from anywhere), and the extension-point/partial counts are unchanged (correctly-scoped, not a gap). Sections 3.1-3.6's per-item 🟡 annotations for items now covered by `AgenticSecurityLayer`/the 5 new `LLMSecurityLayer` builders should be read as 🟢 as of this update; the historical text is kept below rather than mechanically re-edited row-by-row, to preserve the record of what was found when.
 
 ---
 
