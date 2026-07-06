@@ -8,10 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Nothing yet
+
+### Changed
+- Nothing yet
+
+### Deprecated
+- Nothing yet
+
+### Removed
+- Nothing yet
+
+### Fixed
+- Nothing yet
+
+### Security
+- Nothing yet
+
+## [0.2.0] - 2026-07-06
+
+### Added
 Closes the gaps identified in `docs/GAP_ANALYSIS.md` against the 2026 AI/LLM
 threat landscape (OWASP LLM Top 10 2025, OWASP Agentic/ASI Top 10 2026, MITRE
 ATLAS), additively — every existing public symbol keeps its original signature
-and behavior (see `tests/backward_compat.rs`).
+and behavior (see `tests/backward_compat.rs`). This is the first real release
+of this work: everything below (including the modules originally intended as
+"Phase 1-5") had never actually been published until now.
 
 - `LLMSecurityLayer`: a real facade type. It was documented in this README/
   CHANGELOG and used throughout `examples/basic_protection.rs` but never
@@ -69,6 +91,42 @@ and behavior (see `tests/backward_compat.rs`).
   README displaying a coverage badge. There are now 200+ unit tests plus
   integration test suites covering backward compatibility, the new
   `LLMSecurityLayer` API, and adversarial attack/false-positive rates.
+
+`docs/GAP_ANALYSIS.md` was re-verified directly against the source after the
+above landed and found a real integration gap: only 5 of the 19 new modules
+were actually reachable from `LLMSecurityLayer`, and two planned items were
+never implemented at all. This release closes that gap:
+
+- **`LLMSecurityLayer` now activates 5 more capabilities via new opt-in
+  builders** (each a no-op until called, so existing callers see no behavior
+  change): `with_pii_scanner` (PII/secret redaction via
+  `post_llm_security_check_redacted`), `with_system_prompt_leak_detector`
+  (blocks leaked system-prompt fragments in `post_llm_security_check`),
+  `with_policy_store` (hot-swapped policy packs now affect
+  `detect_prompt_injection` immediately), `with_decoder` (unlabeled
+  base64/hex/URL/HTML-entity/ROT13 payloads are actually decoded and
+  rescanned, not just marker-flagged), and `with_confusables_detector`
+  (real skeleton-based homoglyph/mixed-script detection, not just
+  whole-Unicode-range flagging).
+- **`AgenticSecurityLayer`**: a new sibling facade to `LLMSecurityLayer` for
+  agent-framework authors, giving one discoverable entry point over
+  `agentic`/`indirect`/`supply_chain` — tool-call gating, MCP tool-poisoning
+  scanning, supply-chain provenance verification, trust-tiered indirect-
+  injection scanning, memory-write quarantine, privilege checks, inter-agent
+  message replay detection, code-execution gating, and circuit breakers,
+  each translating its verdict into a `SecurityEvent` where one applies.
+- Two gaps described in the original plan but never actually written are now
+  real: extended hidden-Unicode detection (Unicode Tag block, variation
+  selectors) and variable-spacing-tolerant token-stuffing patterns. Both are
+  always-on in `DetectionEngine::detect_prompt_injection` (no legitimate
+  text triggers false positives on either).
+- Event-emission completeness: all 7 `SecurityEventType` variants now have
+  at least one real construction site (previously only 2 did) —
+  `ToolCallDenied`/`ToolPoisoningSuspected`/`CircuitBreakerTripped` via
+  `AgenticSecurityLayer`, `PiiRedacted`/`SystemPromptLeak`/`SemanticVeto` via
+  `LLMSecurityLayer`, and `PolicyReloaded` via a new `PolicyStore::with_event_sink`
+  (needed because `PolicyStore::hot_swap` can legitimately be called from a
+  background reload thread with no facade in scope).
 
 ### Changed
 - Nothing yet

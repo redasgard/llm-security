@@ -5,6 +5,7 @@
 
 pub mod adversarial_ml;
 pub mod agentic;
+pub mod agentic_layer;
 pub mod confusables;
 pub mod constants;
 pub mod content_safety;
@@ -42,3 +43,6 @@ pub use types::LLMSecurity;
 
 // Re-export the LLMSecurityLayer facade (see layer.rs for why this is new, not moved).
 pub use layer::LLMSecurityLayer;
+
+// Re-export the AgenticSecurityLayer facade for agentic/indirect/supply-chain risk.
+pub use agentic_layer::AgenticSecurityLayer;

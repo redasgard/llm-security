@@ -12,6 +12,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::detection::DetectionEngine;
+use crate::events::{EventSeverity, SecurityEvent, SecurityEventSink, SecurityEventType};
 use crate::types::InjectionDetectionResult;
 
 /// A externally-authored policy pack: additional keywords/patterns and score
@@ -82,6 +83,7 @@ pub struct CompiledPolicyPack {
 /// Holds the currently-active compiled policy pack, swappable at runtime.
 pub struct PolicyStore {
     current: RwLock<Option<Arc<CompiledPolicyPack>>>,
+    event_sink: RwLock<Option<Arc<dyn SecurityEventSink>>>,
 }
 
 impl Default for PolicyStore {
@@ -94,11 +96,32 @@ impl PolicyStore {
     pub fn new() -> Self {
         Self {
             current: RwLock::new(None),
+            event_sink: RwLock::new(None),
         }
     }
 
+    /// Register a sink to receive a `PolicyReloaded` event on every `hot_swap`.
+    /// A separate builder (rather than a `LLMSecurityLayer`/`AgenticSecurityLayer`
+    /// translating this after the fact) because `hot_swap` can legitimately be
+    /// called from a context with no facade in scope at all — a background
+    /// reload thread/cron/webhook handler holding only this `Arc<PolicyStore>`,
+    /// per this module's own reload-trigger design.
+    pub fn with_event_sink(self, sink: Arc<dyn SecurityEventSink>) -> Self {
+        *self.event_sink.write().unwrap() = Some(sink);
+        self
+    }
+
     pub fn hot_swap(&self, pack: CompiledPolicyPack) {
+        let version = pack.pack.version.clone();
         *self.current.write().unwrap() = Some(Arc::new(pack));
+        if let Some(sink) = self.event_sink.read().unwrap().as_ref() {
+            sink.emit(&SecurityEvent::new(
+                SecurityEventType::PolicyReloaded,
+                EventSeverity::Info,
+                "policy",
+                format!("policy pack hot-swapped to version {}", version),
+            ));
+        }
     }
 
     pub fn current(&self) -> Option<Arc<CompiledPolicyPack>> {
@@ -206,6 +229,31 @@ mod tests {
     fn policy_store_hot_swap_updates_current() {
         let store = PolicyStore::new();
         assert!(store.current().is_none());
+        let pack = PolicyPack::from_json_str(sample_pack_json()).unwrap().compile().unwrap();
+        store.hot_swap(pack);
+        assert!(store.current().is_some());
+    }
+
+    struct CapturingSink(std::sync::Mutex<Vec<SecurityEventType>>);
+    impl SecurityEventSink for CapturingSink {
+        fn emit(&self, event: &SecurityEvent) {
+            self.0.lock().unwrap().push(event.event_type.clone());
+        }
+    }
+
+    #[test]
+    fn hot_swap_emits_policy_reloaded_event_when_sink_registered() {
+        use std::sync::Arc;
+        let sink = Arc::new(CapturingSink(std::sync::Mutex::new(Vec::new())));
+        let store = PolicyStore::new().with_event_sink(sink.clone());
+        let pack = PolicyPack::from_json_str(sample_pack_json()).unwrap().compile().unwrap();
+        store.hot_swap(pack);
+        assert!(sink.0.lock().unwrap().contains(&SecurityEventType::PolicyReloaded));
+    }
+
+    #[test]
+    fn hot_swap_without_sink_does_not_panic() {
+        let store = PolicyStore::new();
         let pack = PolicyPack::from_json_str(sample_pack_json()).unwrap().compile().unwrap();
         store.hot_swap(pack);
         assert!(store.current().is_some());

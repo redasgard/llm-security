@@ -76,3 +76,19 @@ pub const CRESCENDO_RISK_SCORE: u32 = 40;
 /// Additive risk-score contribution when `MultiTurnAnalyzer::analyze_many_shot`
 /// (see `context.rs`) flags a many-shot jailbreak pattern.
 pub const MANY_SHOT_RISK_SCORE: u32 = 40;
+
+/// Risk score for extended hidden-unicode detection (Tag block / variation
+/// selectors) — see `detection::contains_extended_hidden_unicode`.
+pub const EXTENDED_HIDDEN_UNICODE_RISK_SCORE: u32 = 30;
+
+/// Risk score for variable-spacing-tolerant token-stuffing detection — see
+/// `patterns::get_variable_spacing_token_stuffing_patterns`.
+pub const TOKEN_STUFFING_RISK_SCORE: u32 = 25;
+
+/// Risk score for a mixed-script (confusable) word detected via
+/// `confusables::ConfusablesDetector`.
+pub const CONFUSABLES_MIXED_SCRIPT_RISK_SCORE: u32 = 35;
+
+/// Risk score per sensitive-skeleton match flagged by
+/// `confusables::ConfusablesDetector`.
+pub const CONFUSABLES_FLAGGED_WORD_RISK_SCORE: u32 = 30;
